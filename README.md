@@ -13,6 +13,23 @@ This syncer only reacts to the opened and closed events.
 
 1. Install dependencies
 
+```sh
+make install
+```
+
+## Build
+
+1. Build the image
+
+```sh
+make image
+```
+
+2. Run the application via docker
+
+```shell
+make run
+```
 
 3. Visit `{url}/swagger` for tests and API documentation
 
