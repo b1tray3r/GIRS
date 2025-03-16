@@ -1,0 +1,13 @@
+girs:
+  server:
+    url: ":8080"
+  gitea:
+    url: ""
+    user: ""
+    password: ""
+
+  redmine:
+    url: ""
+    api_key: ""
+    tracker_id: 1
+    closed_status_id: 8
