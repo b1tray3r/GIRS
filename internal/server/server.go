@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -45,16 +46,19 @@ func (s Server) GetHealth(ctx context.Context, request api.GetHealthRequestObjec
 
 // PostGiteaWebhook is the implementation of the API endpoint /gitea/webhook
 func (s Server) PostGiteaWebhook(ctx context.Context, request api.PostGiteaWebhookRequestObject) (api.PostGiteaWebhookResponseObject, error) {
+	slog.Info("Received webhook from Gitea")
 	message := ""
 
 	switch *request.Body.Action {
 	case "closed":
+		slog.Info("Closing issue in Redmine")
 		message = "Success! Issue closed in Redmine."
 		err := s.closeIssue(request)
 		if err != nil {
 			message = err.Error()
 		}
 	case "opened":
+		slog.Info("Creating issue in Redmine")
 		issueID, commentID, err := s.createIssue(request)
 		message = fmt.Sprintf("Success! Issue created with ID: %d. Comment created with ID: %d", issueID, commentID)
 		if err != nil {
@@ -84,14 +88,18 @@ func (s Server) closeIssue(request api.PostGiteaWebhookRequestObject) error {
 		return fmt.Errorf("error getting comments: %w", err)
 	}
 
+	slog.Debug("Found comments", "amount", len(comments))
 	for _, comment := range comments {
 		if strings.Contains(comment.Body, "IssueInRedmine: https://projects.sdzecom.de/issues/") {
+			slog.Debug("Found redmine issue url in comment", "comment", comment.Body)
 			parts := strings.Split(comment.Body, "/")
 			issueID := parts[len(parts)-1]
 			issueIDInt64, err := strconv.ParseInt(issueID, 10, 64)
 			if err != nil {
 				return fmt.Errorf("error parsing issue id: %w", err)
 			}
+
+			slog.Debug("Closing issue", "issueID", issueID)
 			closeState := s.RedmineConfig[RedmineClosedStatusID]
 			note := "Closed by webhook"
 			code, err := s.Redmine.IssueUpdate(issueIDInt64, redmine.IssueUpdate{
@@ -103,6 +111,8 @@ func (s Server) closeIssue(request api.PostGiteaWebhookRequestObject) error {
 			if err != nil {
 				return fmt.Errorf("error closing issue with error: %w", err)
 			}
+
+			slog.Debug("Closed issue with", "code", code)
 
 			if code >= 400 {
 				return fmt.Errorf("error closing issue with code: %d", code)
@@ -117,7 +127,6 @@ func (s Server) closeIssue(request api.PostGiteaWebhookRequestObject) error {
 
 // createIssue creates an issue in Redmine and comments the redmine issue url on the gitea issue
 func (s Server) createIssue(request api.PostGiteaWebhookRequestObject) (int64, int64, error) {
-	// Get the DevOps project
 	p, _, err := s.Redmine.ProjectSingleGet(s.RedmineProjectKey, redmine.ProjectSingleGetRequest{})
 	if err != nil {
 		return -1, -1, fmt.Errorf("error getting project with error: %w", err)
@@ -136,12 +145,14 @@ func (s Server) createIssue(request api.PostGiteaWebhookRequestObject) (int64, i
 	if err != nil {
 		return -1, -1, fmt.Errorf("error creating issue with error: %w", err)
 	}
+
+	slog.Debug("Created issue", "issueID", issue.ID, "code", code)
 	if code != 201 {
 		return -1, -1, fmt.Errorf("error creating issue with unexpected code: %d", code)
 	}
 
 	// Comment the redmine issue url on the gitea issue
-	comment, _, err := s.Gitea.CreateIssueComment(
+	comment, resp, err := s.Gitea.CreateIssueComment(
 		*request.Body.Repository.Owner.Login,
 		*request.Body.Repository.Name,
 		*request.Body.Number,
@@ -152,6 +163,8 @@ func (s Server) createIssue(request api.PostGiteaWebhookRequestObject) (int64, i
 	if err != nil {
 		return issue.ID, -1, fmt.Errorf("error commenting issue with error: %w", err)
 	}
+
+	slog.Debug("Commented issue", "commentID", comment.ID, "issueID", issue.ID, "response", resp.StatusCode)
 
 	return issue.ID, comment.ID, nil
 }

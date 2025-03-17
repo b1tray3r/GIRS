@@ -1,4 +1,6 @@
 girs:
+  log:
+    level: -4
   server:
     url: ":8080"
   gitea:

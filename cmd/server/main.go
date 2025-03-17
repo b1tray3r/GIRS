@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 
 	"code.gitea.io/sdk/gitea"
@@ -35,6 +36,11 @@ func initConfig() {
 
 func main() {
 	initConfig()
+
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.Level(viper.GetInt("girs.log.level")),
+	}))
+	slog.SetDefault(logger)
 
 	auth := gitea.SetBasicAuth(
 		viper.GetString("girs.gitea.user"),
